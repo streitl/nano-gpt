@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "ng-video-lecture"
+version = "0.1.0"
+description = ""
+authors = ["Lou Streit <lou.streit@proton.me>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11,<3.12"
+torch = "^2.1.2"
+numpy = "^1.26.3"
+tqdm = "^4.66.1"
+types-tqdm = "^4.66.0.20240106"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.1.0"
+isort = "^5.10.1"
+mypy = "^1.0.0"
+flake8 = "^6.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
