@@ -11,6 +11,7 @@ torch = "^2.1.2"
 numpy = "^1.26.3"
 tqdm = "^4.66.1"
 types-tqdm = "^4.66.0.20240106"
+notebook = "^7.0.6"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"

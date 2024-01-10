@@ -27,6 +27,15 @@ def decode(tup: tuple[int, ...]) -> str:
     return "".join([idx2char[i] for i in tup])
 
 
+VALIDATION_PROPORTION: float = 0.1
+
+# Train and test splits
+data: torch.Tensor = torch.tensor(encode(text), dtype=torch.long)
+n_train_samples = int((1 - VALIDATION_PROPORTION) * len(data))
+train_data = data[:n_train_samples]
+val_data = data[n_train_samples:]
+
+
 def get_batch(split: str) -> tuple[torch.Tensor, torch.Tensor]:
     # generate a small batch of data of inputs x and targets y
     data = train_data if split == "train" else val_data
@@ -42,9 +51,11 @@ def estimate_loss():
     model.eval()
     for split in ["train", "val"]:
         losses = torch.zeros(EVAL_ITERS)
-        for k in range(EVAL_ITERS):
+        for k in tqdm(
+            range(EVAL_ITERS), leave=False, desc=f"Evaluating on {split} set"
+        ):
             X, Y = get_batch(split)
-            logits, loss = model(X, Y)
+            _, loss = model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
     model.train()
@@ -68,7 +79,6 @@ if __name__ == "__main__":
     EVAL_ITERS: int
 
     LEARNING_RATE: float
-    VALIDATION_PROPORTION: float = 0.1
 
     model: CharGenerator
     if model_name == "bigram":
@@ -83,7 +93,7 @@ if __name__ == "__main__":
         model = BigramLanguageModel(vocabulary_size=VOCABULARY_SIZE)
     else:
         BATCH_SIZE = 64
-        BLOCK_SIZE = 256
+        BLOCK_SIZE = 128
         MAX_ITERS = 5000
         EVAL_INTERVAL = 500
         EVAL_ITERS = 200
@@ -91,43 +101,35 @@ if __name__ == "__main__":
         LEARNING_RATE = 3e-4
 
         model = GPTLanguageModel(
-            n_embeddings=384,
-            n_heads=6,
-            n_layers=6,
+            n_embeddings=128,
+            n_heads=2,
+            n_layers=4,
             dropout=0.2,
             block_size=BLOCK_SIZE,
             vocabulary_size=VOCABULARY_SIZE,
         )
-
-    # Train and test splits
-    data: torch.Tensor = torch.tensor(encode(text), dtype=torch.long)
-    n_train_samples = int((1 - VALIDATION_PROPORTION) * len(data))
-    train_data = data[:n_train_samples]
-    val_data = data[n_train_samples:]
-
     # print the number of parameters in the model
     print(sum(p.numel() for p in model.parameters()) / 1e6, "M parameters")
 
     # create a PyTorch optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
-    for it in (pbar := tqdm(range(MAX_ITERS))):
+    for it in tqdm(range(MAX_ITERS)):
         # every once in a while evaluate the loss on train and val sets
-        if it % EVAL_INTERVAL == 0:
+        if (it + 1) % EVAL_INTERVAL == 0:
             losses = estimate_loss()
-            pbar.set_description(
-                f"loss: train {losses['train']:.4f}, val {losses['val']:.4f}"
-            )
+            print(f"loss: train {losses['train']:.4f}, val {losses['val']:.4f}")
 
         # sample a batch of data
         xb, yb = get_batch("train")
 
         # evaluate the loss
-        logits, loss = model(xb, yb)
+        _, loss = model(xb, yb)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
 
+    torch.save(model, f"{model_name}-big.pt")
     # generate from the model
     context = torch.zeros((1, 1), dtype=torch.long)
     print(decode(tuple(model.generate(context, max_new_tokens=500)[0].tolist())))

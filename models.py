@@ -31,6 +31,19 @@ class CharGenerator(abc.ABC, nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)  # (B, T+1)
         return idx
 
+    def compute_loss(
+        self, logits: torch.Tensor, targets: torch.Tensor | None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        if targets is None:
+            loss = None
+        else:
+            B, T, C = logits.shape
+            logits = logits.view(B * T, C)
+            targets = targets.view(B * T)
+            loss = F.cross_entropy(logits, targets)
+
+        return logits, loss
+
 
 class BigramLanguageModel(CharGenerator):
     """Super simple bi-gram model"""
@@ -44,15 +57,7 @@ class BigramLanguageModel(CharGenerator):
         # idx and targets are both (B,T) tensor of integers
         logits = self.token_embedding_table(idx)  # (B,T,C)
 
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.view(B * T, C)
-            targets = targets.view(B * T)
-            loss = F.cross_entropy(logits, targets)
-
-        return logits, loss
+        return self.compute_loss(logits, targets)
 
 
 class Head(nn.Module):
@@ -81,15 +86,15 @@ class Head(nn.Module):
         k = self.key(x)  # (B,T,hs)
         q = self.query(x)  # (B,T,hs)
         # compute attention scores ("affinities")
-        wei = (
+        W = (
             q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
         )  # (B, T, hs) @ (B, hs, T) -> (B, T, T)
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # (B, T, T)
-        wei = F.softmax(wei, dim=-1)  # (B, T, T)
-        wei = self.dropout(wei)
+        W = W.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # (B, T, T)
+        W = F.softmax(W, dim=-1)  # (B, T, T)
+        W = self.dropout(W)
         # perform the weighted aggregation of the values
         v = self.value(x)  # (B,T,hs)
-        out = wei @ v  # (B, T, T) @ (B, T, hs) -> (B, T, hs)
+        out = W @ v  # (B, T, T) @ (B, T, hs) -> (B, T, hs)
         return out
 
 
@@ -226,12 +231,4 @@ class GPTLanguageModel(CharGenerator):
         x = self.ln_f(x)  # (B,T,C)
         logits = self.lm_head(x)  # (B,T,vocabulary_size)
 
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.view(B * T, C)
-            targets = targets.view(B * T)
-            loss = F.cross_entropy(logits, targets)
-
-        return logits, loss
+        return self.compute_loss(logits, targets)
